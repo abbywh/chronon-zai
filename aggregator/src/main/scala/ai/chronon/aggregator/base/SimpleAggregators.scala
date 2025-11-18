@@ -760,7 +760,10 @@ class Kurtosis extends MomentAggregator {
     if (ir.n < 4 || ir.m2 == 0) Double.NaN else ir.n * ir.m4 / (ir.m2 * ir.m2) - 3
 }
 
-class UniqueTopKHelper[T](inputType: DataType, k: Int, maxSizeOpt: Option[Int] = None, dedupMode: String = DedupMode.FIRST_SEEN.toString) {
+class UniqueTopKHelper[T](inputType: DataType,
+                          k: Int,
+                          maxSizeOpt: Option[Int] = None,
+                          dedupMode: String = DedupMode.FIRST_SEEN.toString) {
 
   private val maxSize: Int = maxSizeOpt.getOrElse(2 * k)
   private val useLenient: Boolean = dedupMode == DedupMode.LAST_SEEN.toString
@@ -952,7 +955,10 @@ class UniqueTopKHelper[T](inputType: DataType, k: Int, maxSizeOpt: Option[Int] =
   }
 }
 
-class UniqueTopKAggregator[T](inputType: DataType, k: Int, maxSizeOpt: Option[Int] = None, dedupMode: String = DedupMode.FIRST_SEEN.toString)
+class UniqueTopKAggregator[T](inputType: DataType,
+                              k: Int,
+                              maxSizeOpt: Option[Int] = None,
+                              dedupMode: String = DedupMode.FIRST_SEEN.toString)
     extends SimpleAggregator[T, Any, util.ArrayList[T]] {
 
   private val uniqueTopK = new UniqueTopKHelper[T](inputType, k, maxSizeOpt, dedupMode)

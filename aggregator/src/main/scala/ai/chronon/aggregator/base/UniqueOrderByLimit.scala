@@ -122,19 +122,22 @@ object UniqueOrderByLimit {
 
   // Lenient (LAST_SEEN) implementation that allows replacing elements with same ID
   def initLenientState[T, OrderType]: LenientState[T, OrderType] =
-    LenientState(new util.ArrayList[T](), new util.HashMap[Long, Int](), null.asInstanceOf[OrderType], indicesDirty = false)
+    LenientState(new util.ArrayList[T](),
+                 new util.HashMap[Long, Int](),
+                 null.asInstanceOf[OrderType],
+                 indicesDirty = false)
 
   case class LenientState[T, OrderType](elems: java.util.ArrayList[T],
-                                         idToIndex: java.util.HashMap[Long, Int],
-                                         var orderWaterMark: OrderType,
-                                         var indicesDirty: Boolean)
+                                        idToIndex: java.util.HashMap[Long, Int],
+                                        var orderWaterMark: OrderType,
+                                        var indicesDirty: Boolean)
 
   // LenientOperator implements LAST_SEEN behavior: always replace when duplicate ID is seen
   case class LenientOperator[T, OrderType: Ordering](getOrderKey: T => OrderType,
-                                                       getId: T => Long,
-                                                       k: Int,
-                                                       maxSize: Int,
-                                                       topK: Boolean = true) {
+                                                     getId: T => Long,
+                                                     k: Int,
+                                                     maxSize: Int,
+                                                     topK: Boolean = true) {
 
     private val ordering = implicitly[Ordering[OrderType]]
 
@@ -245,9 +248,9 @@ object UniqueOrderByLimit {
           val o2Key = getOrderKey(o2)
 
           if (topK) {
-            ordering.compare(o2Key, o1Key)  // descending
+            ordering.compare(o2Key, o1Key) // descending
           } else {
-            ordering.compare(o1Key, o2Key)  // ascending
+            ordering.compare(o1Key, o2Key) // ascending
           }
         }
       })
