@@ -107,6 +107,7 @@ class ChrononKryoRegistrator extends KryoRegistrator {
       "ai.chronon.aggregator.base.ApproxHistogramIr",
       "ai.chronon.aggregator.base.MomentsIR",
       "ai.chronon.aggregator.base.UniqueOrderByLimit$State",
+      "ai.chronon.aggregator.base.UniqueOrderByLimit$LenientState",
       "ai.chronon.aggregator.windowing.BatchIr",
       "ai.chronon.aggregator.windowing.FinalBatchIr",
       "ai.chronon.api.Row",

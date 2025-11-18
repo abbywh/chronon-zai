@@ -252,4 +252,193 @@ class UniqueTopKAggregatorTest extends AnyFlatSpec {
     assertEquals(k, result.size())
     assertEquals(List(20, 19, 18), result.asScala.toList)
   }
+
+  // ===== LAST_SEEN mode tests =====
+
+  "UniqueTopKAggregator with LAST_SEEN mode" should "replace elements with duplicate IDs" in {
+    val k = 3
+    val aggregator = new UniqueTopKAggregator[Int](IntType, k, None, "LAST_SEEN")
+
+    // Add same ID multiple times - LAST_SEEN should keep the last occurrence
+    val inputs = List(5, 3, 8, 5, 3, 5)
+    val ir = aggregator.prepare(inputs.head)
+    inputs.tail.foreach(input => aggregator.update(ir, input))
+
+    val result = aggregator.finalize(ir)
+    val resultList = result.asScala.toList
+
+    // Should have 3 unique values
+    assertEquals(3, result.size())
+    assertEquals(List(8, 5, 3), resultList)
+  }
+
+  "UniqueTopKAggregator with LAST_SEEN mode and IntType" should "always keep last seen value" in {
+    val k = 5
+    val aggregator = new UniqueTopKAggregator[Int](IntType, k, None, "LAST_SEEN")
+
+    val inputs = List(1, 2, 1, 3, 2, 1, 4, 3, 2, 1)
+    val ir = aggregator.prepare(inputs.head)
+    inputs.tail.foreach(input => aggregator.update(ir, input))
+
+    val result = aggregator.finalize(ir)
+    val resultList = result.asScala.toList
+
+    assertEquals(4, result.size()) // 4 unique IDs
+    assertEquals(List(4, 3, 2, 1), resultList)
+  }
+
+  "UniqueTopKAggregator with LAST_SEEN mode and StructType" should "replace struct when duplicate ID is seen" in {
+    val structType = StructType("TestStruct",
+                                Array(
+                                  StructField("sort_key", StringType),
+                                  StructField("unique_id", LongType),
+                                  StructField("value", IntType)
+                                ))
+
+    val k = 3
+    val aggregator = new UniqueTopKAggregator[Array[Any]](structType, k, None, "LAST_SEEN")
+
+    val inputs = List(
+      Array("z", 1L, 10),  // ID=1, value=10
+      Array("y", 2L, 20),  // ID=2, value=20
+      Array("x", 3L, 30),  // ID=3, value=30
+      Array("w", 1L, 100), // ID=1 again - should REPLACE with value=100
+      Array("v", 2L, 200)  // ID=2 again - should REPLACE with value=200
+    )
+
+    val ir = aggregator.prepare(inputs.head)
+    inputs.tail.foreach(input => aggregator.update(ir, input))
+
+    val result = aggregator.finalize(ir)
+    val resultList = result.asScala.toList
+
+    assertEquals(3, result.size())
+
+    // Check that ID=1 now has value=100 (not 10), and ID=2 has value=200 (not 20)
+    val id1Entry = resultList.find(arr => arr(1) == 1L).get
+    val id2Entry = resultList.find(arr => arr(1) == 2L).get
+    val id3Entry = resultList.find(arr => arr(1) == 3L).get
+
+    assertEquals(100, id1Entry(2)) // Last seen value for ID=1
+    assertEquals(200, id2Entry(2)) // Last seen value for ID=2
+    assertEquals(30, id3Entry(2))  // Original value for ID=3
+
+    // Check sort keys also updated (last seen)
+    assertEquals("w", id1Entry(0))
+    assertEquals("v", id2Entry(0))
+    assertEquals("x", id3Entry(0))
+  }
+
+  "UniqueTopKAggregator with LAST_SEEN mode" should "handle merge operations correctly" in {
+    val k = 3
+    val aggregator = new UniqueTopKAggregator[Int](IntType, k, None, "LAST_SEEN")
+
+    // First batch
+    val ir1 = aggregator.prepare(5)
+    aggregator.update(ir1, 3)
+    aggregator.update(ir1, 8)
+
+    // Second batch - has duplicate ID=5 which should replace
+    val ir2 = aggregator.prepare(7)
+    aggregator.update(ir2, 1)
+    aggregator.update(ir2, 5) // Duplicate of 5 from first batch
+
+    val merged = aggregator.merge(ir1, ir2)
+    val result = aggregator.finalize(merged)
+    val resultList = result.asScala.toList
+
+    // When merging, the 5 from ir2 should replace the 5 from ir1
+    // We have 5 unique values (8, 7, 5, 3, 1) but k=3 so only top 3
+    assertEquals(k, result.size())
+    // Top 3 should be 8, 7, 5
+    assertEquals(List(8, 7, 5), resultList)
+  }
+
+  "UniqueTopKAggregator with FIRST_SEEN mode (default)" should "reject duplicates as before" in {
+    val k = 3
+    val aggregator = new UniqueTopKAggregator[Int](IntType, k, None, "FIRST_SEEN")
+
+    val inputs = List(5, 3, 8, 5, 3) // Duplicates should be ignored
+    val ir = aggregator.prepare(inputs.head)
+    inputs.tail.foreach(input => aggregator.update(ir, input))
+
+    val result = aggregator.finalize(ir)
+    val resultList = result.asScala.toList
+
+    assertEquals(3, result.size())
+    assertEquals(List(8, 5, 3), resultList) // First occurrence of each kept
+  }
+
+  "UniqueTopKAggregator with LAST_SEEN mode" should "handle normalization round-trip" in {
+    val k = 3
+    val aggregator = new UniqueTopKAggregator[Int](IntType, k, None, "LAST_SEEN")
+
+    val inputs = List(5, 3, 8, 5, 3) // With duplicates
+    val ir = aggregator.prepare(inputs.head)
+    inputs.tail.foreach(input => aggregator.update(ir, input))
+
+    val originalResult = aggregator.finalize(aggregator.clone(ir))
+
+    val normalized = aggregator.normalize(ir)
+    val denormalized = aggregator.denormalize(normalized)
+    val roundTripResult = aggregator.finalize(denormalized)
+
+    assertEquals(originalResult, roundTripResult)
+  }
+
+  "UniqueTopKAggregator with LAST_SEEN mode" should "handle clone operation correctly" in {
+    val k = 3
+    val aggregator = new UniqueTopKAggregator[Int](IntType, k, None, "LAST_SEEN")
+
+    val inputs = List(5, 3, 8, 1)
+    val ir = aggregator.prepare(inputs.head)
+    inputs.tail.foreach(input => aggregator.update(ir, input))
+
+    val cloned = aggregator.clone(ir)
+    val originalResult = aggregator.finalize(aggregator.clone(ir)) // Clone before finalizing to preserve state
+    val clonedResult = aggregator.finalize(cloned)
+
+    assertEquals(originalResult, clonedResult)
+
+    // Verify they are independent - update original with new element
+    aggregator.update(ir, 10) // Add a new larger element
+    val newOriginalResult = aggregator.finalize(ir)
+
+    // The cloned state should not be affected
+    // Original should now have [10, 8, 5] (top 3 after adding 10)
+    assertEquals(List(10, 8, 5), newOriginalResult.asScala.toList)
+    // Cloned should still have original [8, 5, 3]
+    assertEquals(List(8, 5, 3), clonedResult.asScala.toList)
+  }
+
+  "UniqueTopKAggregator with LAST_SEEN mode and LongType" should "replace elements correctly" in {
+    val k = 3
+    val aggregator = new UniqueTopKAggregator[Long](LongType, k, None, "LAST_SEEN")
+
+    val inputs = List(100L, 200L, 300L, 100L, 200L)
+    val ir = aggregator.prepare(inputs.head)
+    inputs.tail.foreach(input => aggregator.update(ir, input))
+
+    val result = aggregator.finalize(ir)
+    val resultList = result.asScala.toList
+
+    assertEquals(3, result.size())
+    assertEquals(List(300L, 200L, 100L), resultList)
+  }
+
+  "UniqueTopKAggregator with LAST_SEEN mode and StringType" should "replace elements correctly" in {
+    val k = 3
+    val aggregator = new UniqueTopKAggregator[String](StringType, k, None, "LAST_SEEN")
+
+    val inputs = List("apple", "banana", "cherry", "apple", "banana")
+    val ir = aggregator.prepare(inputs.head)
+    inputs.tail.foreach(input => aggregator.update(ir, input))
+
+    val result = aggregator.finalize(ir)
+    val resultList = result.asScala.toList
+
+    assertEquals(3, result.size())
+    // String comparison by lexicographical order
+    assertEquals(List("cherry", "banana", "apple"), resultList)
+  }
 }

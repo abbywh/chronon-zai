@@ -152,7 +152,18 @@ class Operation:
     """Returns k smallest values of the input column"""
 
     UNIQUE_TOP_K = collector(ttypes.Operation.UNIQUE_TOP_K)
-    """Returns top k unique elements ranked by their values. Automatically deduplicates inputs. For structs, requires sort_key (String) and unique_id (Long) fields."""
+    """Returns top k unique elements ranked by their values. Automatically deduplicates inputs.
+
+    For structs, requires sort_key (String) and unique_id (Long) fields.
+
+    Optional argMap parameters:
+    - k: Number of top elements to keep (required)
+    - dedup_mode: Deduplication strategy (optional, default: "FIRST_SEEN")
+        - "FIRST_SEEN": Keep first occurrence of each unique_id (default behavior)
+        - "LAST_SEEN": Replace with last occurrence when duplicate unique_id is seen
+
+    Example: Operation.UNIQUE_TOP_K(k=5, dedup_mode="LAST_SEEN")
+    """
 
     APPROX_PERCENTILE = generic_collector(ttypes.Operation.APPROX_PERCENTILE, ["percentiles"], k=20)
     """Approximate percentile calculation with configurable accuracy parameter k=20"""

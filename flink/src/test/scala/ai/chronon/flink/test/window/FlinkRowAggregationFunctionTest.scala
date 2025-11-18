@@ -264,6 +264,129 @@ class FlinkRowAggregationFunctionTest extends AnyFlatSpec {
     }
   }
 
+  it should "flink aggregator handles LAST_SEEN mode correctly for UNIQUE_TOP_K" in {
+    // Create aggregations with LAST_SEEN mode
+    val aggregationsWithLastSeen: Seq[Aggregation] = Seq(
+      Builders.Aggregation(
+        Operation.UNIQUE_TOP_K,
+        "struct_col",
+        Seq(new Window(1, TimeUnit.DAYS)),
+        argMap = Map("k" -> "3", "dedup_mode" -> "LAST_SEEN")
+      )
+    )
+
+    val groupByMetadata = Builders.MetaData(name = "my_group_by_last_seen")
+    val groupBy = Builders.GroupBy(metaData = groupByMetadata, aggregations = aggregationsWithLastSeen)
+    val aggregateFunc = new FlinkRowAggregationFunction(groupBy, schema)
+
+    var acc = aggregateFunc.createAccumulator()
+    val rows = Seq(
+      createRow(1519862399984L, 4, 4.0f, "A", Struct(1, "8", "a")),    // ID=1, first occurrence
+      createRow(1519862399985L, 40, 5.0f, "B", Struct(2, "7", "b")),   // ID=2, first occurrence
+      createRow(1519862399988L, 3, 3.0f, "C", Struct(1, "9", "c")),    // ID=1 again - should REPLACE with payload "c"
+      createRow(1519862399990L, 5, 4.0f, "D", Struct(3, "6", "d")),    // ID=3, new entry
+      createRow(1519862399994L, 4, 4.0f, "E", Struct(2, "5", "e"))     // ID=2 again - should REPLACE with payload "e"
+    )
+    rows.foreach(row => acc = aggregateFunc.add(row, acc))
+    val result = aggregateFunc.getResult(acc)
+
+    val tileCodec = new TileCodec(groupBy, schema)
+    val expandedIr = tileCodec.expandWindowedTileIr(result.ir)
+    val finalResult = tileCodec.windowedRowAggregator.finalize(expandedIr)
+
+    // We should have 1 result (the unique_top_k aggregation)
+    assert(finalResult.length == 1)
+
+    // Expected: After all replacements, we have:
+    // - ID=1: sort_key="9", payload="c" (replaced)
+    // - ID=2: sort_key="5", payload="e" (replaced)
+    // - ID=3: sort_key="6", payload="d"
+    // Top 3 by lexicographical order descending: "9" > "6" > "5"
+    val expectedUniqueTopK = Seq(
+      Map(
+        "unique_id" -> 1L,
+        "sort_key" -> "9",
+        "payload" -> "c"   // Last seen payload for ID=1
+      ),
+      Map(
+        "unique_id" -> 3L,
+        "sort_key" -> "6",
+        "payload" -> "d"
+      ),
+      Map(
+        "unique_id" -> 2L,
+        "sort_key" -> "5",
+        "payload" -> "e"   // Last seen payload for ID=2
+      )
+    ).toJava
+
+    finalResult(0) shouldBe expectedUniqueTopK
+  }
+
+  it should "flink aggregator LAST_SEEN mode merges correctly" in {
+    val aggregationsWithLastSeen: Seq[Aggregation] = Seq(
+      Builders.Aggregation(
+        Operation.UNIQUE_TOP_K,
+        "struct_col",
+        Seq(new Window(1, TimeUnit.DAYS)),
+        argMap = Map("k" -> "3", "dedup_mode" -> "LAST_SEEN")
+      )
+    )
+
+    val groupByMetadata = Builders.MetaData(name = "my_group_by_merge_last_seen")
+    val groupBy = Builders.GroupBy(metaData = groupByMetadata, aggregations = aggregationsWithLastSeen)
+    val aggregateFunc = new FlinkRowAggregationFunction(groupBy, schema)
+
+    // Partial aggregate 1
+    var acc1 = aggregateFunc.createAccumulator()
+    val rows1 = Seq(
+      createRow(1519862399984L, 4, 4.0f, "A", Struct(1, "8", "a")),
+      createRow(1519862399985L, 40, 5.0f, "B", Struct(2, "7", "b"))
+    )
+    rows1.foreach(row => acc1 = aggregateFunc.add(row, acc1))
+    val partialResult1 = aggregateFunc.getResult(acc1)
+
+    // Partial aggregate 2 - has duplicate ID=1 which should replace
+    var acc2 = aggregateFunc.createAccumulator()
+    val rows2 = Seq(
+      createRow(1519862399988L, 3, 3.0f, "C", Struct(1, "9", "c")),    // ID=1 again - replace
+      createRow(1519862399990L, 5, 4.0f, "D", Struct(3, "6", "d"))
+    )
+    rows2.foreach(row => acc2 = aggregateFunc.add(row, acc2))
+    val partialResult2 = aggregateFunc.getResult(acc2)
+
+    // Merge the partial results
+    val mergedPartialAggregates = aggregateFunc.rowAggregator.merge(partialResult1.ir, partialResult2.ir)
+
+    val tileCodec = new TileCodec(groupBy, schema)
+    val expandedIr = tileCodec.expandWindowedTileIr(mergedPartialAggregates)
+    val finalResult = tileCodec.windowedRowAggregator.finalize(expandedIr)
+
+    assert(finalResult.length == 1)
+
+    // Expected: ID=1 should have last seen values (from acc2: sort_key="9", payload="c")
+    // Top 3 by sort_key: "9" > "7" > "6"
+    val expectedUniqueTopK = Seq(
+      Map(
+        "unique_id" -> 1L,
+        "sort_key" -> "9",
+        "payload" -> "c"   // Last seen from merge
+      ),
+      Map(
+        "unique_id" -> 2L,
+        "sort_key" -> "7",
+        "payload" -> "b"
+      ),
+      Map(
+        "unique_id" -> 3L,
+        "sort_key" -> "6",
+        "payload" -> "d"
+      )
+    ).toJava
+
+    finalResult(0) shouldBe expectedUniqueTopK
+  }
+
   case class Struct(uniqueId: Long, sortKey: String, payload: String)
   def createRow(ts: Long, views: Int, rating: Float, title: String, struct: Struct): ProjectedEvent = {
     val row = Map(

@@ -20,11 +20,12 @@ import ai.chronon.aggregator.base._
 import ai.chronon.api.Extensions.AggregationPartOps
 import ai.chronon.api.Extensions.OperationOps
 import ai.chronon.api._
+import ai.chronon.api.ScalaJavaConversions._
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.apache.datasketches.frequencies.ErrorType
 
 import java.util
-import scala.collection.JavaConverters.asScalaIteratorConverter
+import scala.collection.JavaConverters._
 
 abstract class ColumnAggregator extends Serializable {
   def outputType: DataType
@@ -392,11 +393,14 @@ object ColumnAggregator {
 
       case Operation.UNIQUE_TOP_K =>
         val k = aggregationPart.getInt("k")
+        val dedupMode = Option(aggregationPart.argMap)
+          .flatMap(_.toScala.get("dedup_mode"))
+          .getOrElse(DedupMode.FIRST_SEEN.toString)
         inputType match {
-          case IntType        => simple(new UniqueTopKAggregator[Int](inputType, k))
-          case LongType       => simple(new UniqueTopKAggregator[Long](inputType, k))
-          case StringType     => simple(new UniqueTopKAggregator[String](inputType, k))
-          case st: StructType => simple(new UniqueTopKAggregator[Array[Any]](inputType, k))
+          case IntType        => simple(new UniqueTopKAggregator[Int](inputType, k, None, dedupMode))
+          case LongType       => simple(new UniqueTopKAggregator[Long](inputType, k, None, dedupMode))
+          case StringType     => simple(new UniqueTopKAggregator[String](inputType, k, None, dedupMode))
+          case st: StructType => simple(new UniqueTopKAggregator[Array[Any]](inputType, k, None, dedupMode))
           case _              => mismatchException
         }
 

@@ -217,6 +217,16 @@ enum Operation {
     UNIQUE_TOP_K = 20  // returns top k unique elements based on frequency
 }
 
+/**
+ * Deduplication mode for UNIQUE_TOP_K operation.
+ * Determines behavior when duplicate unique_id values are encountered.
+ */
+enum DedupMode {
+    // Keep the first occurrence when a duplicate unique_id is seen
+    FIRST_SEEN = 0
+    // Replace with the last occurrence when a duplicate unique_id is seen
+    LAST_SEEN = 1
+}
 
 
 /**
