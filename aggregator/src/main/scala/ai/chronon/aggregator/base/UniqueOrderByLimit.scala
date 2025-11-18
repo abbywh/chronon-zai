@@ -141,6 +141,30 @@ object UniqueOrderByLimit {
 
     private val ordering = implicitly[Ordering[OrderType]]
 
+    // Recompute the watermark from current elements (O(k), k is typically small)
+    private def recomputeOrderWaterMark(state: LenientState[T, OrderType]): Unit = {
+      if (state.elems.isEmpty) {
+        state.orderWaterMark = null.asInstanceOf[OrderType]
+      } else {
+        var i = 0
+        var candidate = getOrderKey(state.elems.get(0))
+        i += 1
+        while (i < state.elems.size()) {
+          val key = getOrderKey(state.elems.get(i))
+          candidate =
+            if (topK) {
+              // track minimum for top-k (k-th largest element)
+              if (ordering.lt(key, candidate)) key else candidate
+            } else {
+              // track maximum for bottom-k (k-th smallest element)
+              if (ordering.gt(key, candidate)) key else candidate
+            }
+          i += 1
+        }
+        state.orderWaterMark = candidate
+      }
+    }
+
     // Rebuild the idToIndex map after sorting (indices have changed)
     private def rebuildIndexMap(state: LenientState[T, OrderType]): Unit = {
       state.idToIndex.clear()
@@ -167,7 +191,6 @@ object UniqueOrderByLimit {
       if (elems.size > 0) {
         state.orderWaterMark = getOrderKey(elems.get(elems.size - 1))
       }
-
       // Lazy rebuild: only rebuild if we actually sorted and pruned
       if (state.indicesDirty) {
         rebuildIndexMap(state)
@@ -194,7 +217,8 @@ object UniqueOrderByLimit {
       if (state.idToIndex.containsKey(elemId)) {
         val existingIndex = state.idToIndex.get(elemId)
         state.elems.set(existingIndex, elem)
-        // Note: index doesn't change, so no need to update map or set dirty flag
+        // Index stays the same, but the orderKey may have changed; keep watermark consistent
+        recomputeOrderWaterMark(state)
         return
       }
 

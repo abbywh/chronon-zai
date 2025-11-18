@@ -151,7 +151,11 @@ class Operation:
     BOTTOM_K = collector(ttypes.Operation.BOTTOM_K)
     """Returns k smallest values of the input column"""
 
-    UNIQUE_TOP_K = collector(ttypes.Operation.UNIQUE_TOP_K)
+    UNIQUE_TOP_K = generic_collector(
+        ttypes.Operation.UNIQUE_TOP_K,
+        ["k"],
+        dedup_mode="FIRST_SEEN",
+    )
     """Returns top k unique elements ranked by their values. Automatically deduplicates inputs.
 
     For structs, requires sort_key (String) and unique_id (Long) fields.
