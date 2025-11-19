@@ -216,8 +216,10 @@ object UniqueOrderByLimit {
       if (state.idToIndex.containsKey(elemId)) {
         val existingIndex = state.idToIndex.get(elemId)
         state.elems.set(existingIndex, elem)
-        // Index stays the same, but the orderKey may have changed; keep watermark consistent
-        recomputeOrderWaterMark(state)
+        // Only recompute watermark if we're at capacity (size >= k), as that's when it affects filtering
+        if (state.elems.size() >= k) {
+          recomputeOrderWaterMark(state)
+        }
         return
       }
 
