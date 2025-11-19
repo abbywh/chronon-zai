@@ -151,14 +151,13 @@ object UniqueOrderByLimit {
         i += 1
         while (i < state.elems.size()) {
           val key = getOrderKey(state.elems.get(i))
-          candidate =
-            if (topK) {
-              // track minimum for top-k (k-th largest element)
-              if (ordering.lt(key, candidate)) key else candidate
-            } else {
-              // track maximum for bottom-k (k-th smallest element)
-              if (ordering.gt(key, candidate)) key else candidate
-            }
+          candidate = if (topK) {
+            // track minimum for top-k (k-th largest element)
+            if (ordering.lt(key, candidate)) key else candidate
+          } else {
+            // track maximum for bottom-k (k-th smallest element)
+            if (ordering.gt(key, candidate)) key else candidate
+          }
           i += 1
         }
         state.orderWaterMark = candidate
