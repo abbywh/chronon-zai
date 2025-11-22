@@ -25,7 +25,7 @@ from ai.chronon.types import EnvironmentVariables
 v1 = Join(
     left=test_sources.staging_entities,
     right_parts=[JoinPart(group_by=sample_group_by.v1)],
-    i donrow_ids="place_id",
+    row_ids="place_id",
     table_properties={"config_json": """{"sample_key": "sample_value"}"""},
     output_namespace="sample_namespace",
     env_vars=EnvironmentVariables(

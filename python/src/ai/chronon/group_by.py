@@ -164,11 +164,10 @@ class Operation:
     - k: Number of top elements to keep (required)
     - collision_strategy: Collision strategy for handling duplicate unique_ids (optional, default: "IGNORE")
         - "IGNORE": Keep first occurrence of each unique_id (default behavior)
-        - "UPDATE": Keep occurrence with maximum sort_key (best order key wins)
-            * For timestamps: keeps latest timestamp
-            * For strings: keeps lexicographically greatest ("z" > "a")
-            * For numerics: keeps largest value
-            * Order-independent and deterministic
+        - "UPDATE": Keep last-seen occurrence for each unique_id (replacement semantics)
+            * Uses last-seen replacement: later occurrences overwrite earlier ones
+            * Order-dependent and non-deterministic (depends on data arrival order)
+            * Does NOT select based on sort_key value
 
     Example: Operation.UNIQUE_TOP_K(k=5, collision_strategy="UPDATE")
     """
