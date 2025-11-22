@@ -264,14 +264,14 @@ class FlinkRowAggregationFunctionTest extends AnyFlatSpec {
     }
   }
 
-  it should "flink aggregator handles LAST_SEEN mode correctly for UNIQUE_TOP_K" in {
-    // Create aggregations with LAST_SEEN mode
+  it should "flink aggregator handles UPDATE mode correctly for UNIQUE_TOP_K" in {
+    // Create aggregations with UPDATE mode
     val aggregationsWithLastSeen: Seq[Aggregation] = Seq(
       Builders.Aggregation(
         Operation.UNIQUE_TOP_K,
         "struct_col",
         Seq(new Window(1, TimeUnit.DAYS)),
-        argMap = Map("k" -> "3", "dedup_mode" -> "LAST_SEEN")
+        argMap = Map("k" -> "3", "collision_strategy" -> "UPDATE")
       )
     )
 
@@ -323,13 +323,13 @@ class FlinkRowAggregationFunctionTest extends AnyFlatSpec {
     finalResult(0) shouldBe expectedUniqueTopK
   }
 
-  it should "flink aggregator LAST_SEEN mode merges correctly" in {
+  it should "flink aggregator UPDATE mode merges correctly" in {
     val aggregationsWithLastSeen: Seq[Aggregation] = Seq(
       Builders.Aggregation(
         Operation.UNIQUE_TOP_K,
         "struct_col",
         Seq(new Window(1, TimeUnit.DAYS)),
-        argMap = Map("k" -> "3", "dedup_mode" -> "LAST_SEEN")
+        argMap = Map("k" -> "3", "collision_strategy" -> "UPDATE")
       )
     )
 

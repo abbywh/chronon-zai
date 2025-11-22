@@ -45,7 +45,7 @@ class FetcherUniqueTopKTest extends SparkTestBase {
                                          dropDsOnWrite = true)(spark)
   }
 
-  it should "test temporal fetch join with UniqueTopK LAST_SEEN mode" in {
+  it should "test temporal fetch join with UniqueTopK UPDATE mode" in {
     val namespace = "unique_topk_last_seen_fetch"
     SparkTestBase.createDatabase(spark, namespace)
 
@@ -56,7 +56,7 @@ class FetcherUniqueTopKTest extends SparkTestBase {
       Row(1L, toTs("2021-04-10 09:00:00"), "2021-04-10")
     )
 
-    // Struct snapshot data with duplicates to test LAST_SEEN
+    // Struct snapshot data with duplicates to test UPDATE
     val structData = Seq(
       Row(1L, toTs("2021-04-04 00:30:00"), Row("z", 1L, 100), "2021-04-09"),  // ID=1, first occurrence
       Row(1L, toTs("2021-04-05 00:30:00"), Row("y", 2L, 200), "2021-04-09"),  // ID=2
@@ -66,7 +66,7 @@ class FetcherUniqueTopKTest extends SparkTestBase {
 
     // Mutation data with another replacement for ID=1
     val mutationData = Seq(
-      Row(1L, toTs("2021-04-08 00:30:00"), Row("v", 1L, 500), "2021-04-09", toTs("2021-04-08 00:30:00"), false)  // ID=1 LAST_SEEN
+      Row(1L, toTs("2021-04-08 00:30:00"), Row("v", 1L, 500), "2021-04-09", toTs("2021-04-08 00:30:00"), false)  // ID=1 UPDATE
     )
 
     // Schemas
@@ -149,7 +149,7 @@ class FetcherUniqueTopKTest extends SparkTestBase {
         Builders.Aggregation(
           operation = Operation.UNIQUE_TOP_K,
           inputColumn = "rating_struct",
-          argMap = Map("k" -> "3", "dedup_mode" -> "LAST_SEEN"),  // LAST_SEEN mode
+          argMap = Map("k" -> "3", "collision_strategy" -> "UPDATE"),  // UPDATE mode
           windows = null
         )
       ),

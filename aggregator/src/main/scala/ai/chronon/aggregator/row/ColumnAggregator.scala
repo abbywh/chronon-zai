@@ -393,14 +393,14 @@ object ColumnAggregator {
 
       case Operation.UNIQUE_TOP_K =>
         val k = aggregationPart.getInt("k")
-        val dedupMode = Option(aggregationPart.argMap)
-          .flatMap(_.toScala.get("dedup_mode"))
-          .getOrElse(DedupMode.FIRST_SEEN.toString)
+        val collisionStrategy = Option(aggregationPart.argMap)
+          .flatMap(_.toScala.get("collision_strategy"))
+          .getOrElse(CollisionStrategy.IGNORE.toString)
         inputType match {
-          case IntType        => simple(new UniqueTopKAggregator[Int](inputType, k, None, dedupMode))
-          case LongType       => simple(new UniqueTopKAggregator[Long](inputType, k, None, dedupMode))
-          case StringType     => simple(new UniqueTopKAggregator[String](inputType, k, None, dedupMode))
-          case st: StructType => simple(new UniqueTopKAggregator[Array[Any]](inputType, k, None, dedupMode))
+          case IntType        => simple(new UniqueTopKAggregator[Int](inputType, k, None, collisionStrategy))
+          case LongType       => simple(new UniqueTopKAggregator[Long](inputType, k, None, collisionStrategy))
+          case StringType     => simple(new UniqueTopKAggregator[String](inputType, k, None, collisionStrategy))
+          case st: StructType => simple(new UniqueTopKAggregator[Array[Any]](inputType, k, None, collisionStrategy))
           case _              => mismatchException
         }
 

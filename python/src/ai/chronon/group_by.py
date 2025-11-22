@@ -154,7 +154,7 @@ class Operation:
     UNIQUE_TOP_K = generic_collector(
         ttypes.Operation.UNIQUE_TOP_K,
         ["k"],
-        dedup_mode="FIRST_SEEN",
+        collision_strategy="IGNORE",
     )
     """Returns top k unique elements ranked by their values. Automatically deduplicates inputs.
 
@@ -162,11 +162,15 @@ class Operation:
 
     Optional argMap parameters:
     - k: Number of top elements to keep (required)
-    - dedup_mode: Deduplication strategy (optional, default: "FIRST_SEEN")
-        - "FIRST_SEEN": Keep first occurrence of each unique_id (default behavior)
-        - "LAST_SEEN": Replace with last occurrence when duplicate unique_id is seen
+    - collision_strategy: Collision strategy for handling duplicate unique_ids (optional, default: "IGNORE")
+        - "IGNORE": Keep first occurrence of each unique_id (default behavior)
+        - "UPDATE": Keep occurrence with maximum sort_key (best order key wins)
+            * For timestamps: keeps latest timestamp
+            * For strings: keeps lexicographically greatest ("z" > "a")
+            * For numerics: keeps largest value
+            * Order-independent and deterministic
 
-    Example: Operation.UNIQUE_TOP_K(k=5, dedup_mode="LAST_SEEN")
+    Example: Operation.UNIQUE_TOP_K(k=5, collision_strategy="UPDATE")
     """
 
     APPROX_PERCENTILE = generic_collector(ttypes.Operation.APPROX_PERCENTILE, ["percentiles"], k=20)

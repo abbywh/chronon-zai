@@ -120,29 +120,29 @@ object UniqueOrderByLimit {
     }
   }
 
-  // Lenient (LAST_SEEN) implementation that allows replacing elements with same ID
-  def initLenientState[T, OrderType]: LenientState[T, OrderType] =
-    LenientState(new util.ArrayList[T](),
-                 new util.HashMap[Long, Int](),
-                 null.asInstanceOf[OrderType],
-                 indicesDirty = false)
+  // UPDATE collision strategy implementation that allows replacing elements with same ID
+  def initUpdateState[T, OrderType]: UpdateState[T, OrderType] =
+    UpdateState(new util.ArrayList[T](),
+                new util.HashMap[Long, Int](),
+                null.asInstanceOf[OrderType],
+                indicesDirty = false)
 
-  case class LenientState[T, OrderType](elems: java.util.ArrayList[T],
-                                        idToIndex: java.util.HashMap[Long, Int],
-                                        var orderWaterMark: OrderType,
-                                        var indicesDirty: Boolean)
+  case class UpdateState[T, OrderType](elems: java.util.ArrayList[T],
+                                       idToIndex: java.util.HashMap[Long, Int],
+                                       var orderWaterMark: OrderType,
+                                       var indicesDirty: Boolean)
 
-  // LenientOperator implements LAST_SEEN behavior: always replace when duplicate ID is seen
-  case class LenientOperator[T, OrderType: Ordering](getOrderKey: T => OrderType,
-                                                     getId: T => Long,
-                                                     k: Int,
-                                                     maxSize: Int,
-                                                     topK: Boolean = true) {
+  // UpdateOperator implements UPDATE collision strategy behavior: always replace when duplicate ID is seen
+  case class UpdateOperator[T, OrderType: Ordering](getOrderKey: T => OrderType,
+                                                    getId: T => Long,
+                                                    k: Int,
+                                                    maxSize: Int,
+                                                    topK: Boolean = true) {
 
     private val ordering = implicitly[Ordering[OrderType]]
 
     // Recompute the watermark from current elements (O(k), k is typically small)
-    private def recomputeOrderWaterMark(state: LenientState[T, OrderType]): Unit = {
+    private def recomputeOrderWaterMark(state: UpdateState[T, OrderType]): Unit = {
       if (state.elems.isEmpty) {
         state.orderWaterMark = null.asInstanceOf[OrderType]
       } else {
@@ -165,7 +165,7 @@ object UniqueOrderByLimit {
     }
 
     // Rebuild the idToIndex map after sorting (indices have changed)
-    private def rebuildIndexMap(state: LenientState[T, OrderType]): Unit = {
+    private def rebuildIndexMap(state: UpdateState[T, OrderType]): Unit = {
       state.idToIndex.clear()
       var i = 0
       while (i < state.elems.size()) {
@@ -177,7 +177,7 @@ object UniqueOrderByLimit {
     }
 
     // to be used in "finalize" of the aggregator
-    def sortAndPrune(state: LenientState[T, OrderType]): Unit = {
+    def sortAndPrune(state: UpdateState[T, OrderType]): Unit = {
       sort(state)
       val elems = state.elems
 
@@ -197,8 +197,8 @@ object UniqueOrderByLimit {
     }
 
     // to be used to impl "denormalize" of the aggregator
-    def buildStateFromElems(elems: java.util.ArrayList[T]): LenientState[T, OrderType] = {
-      val state: LenientState[T, OrderType] = UniqueOrderByLimit.initLenientState[T, OrderType]
+    def buildStateFromElems(elems: java.util.ArrayList[T]): UpdateState[T, OrderType] = {
+      val state: UpdateState[T, OrderType] = UniqueOrderByLimit.initUpdateState[T, OrderType]
       val it = elems.iterator()
 
       while (it.hasNext) {
@@ -208,11 +208,11 @@ object UniqueOrderByLimit {
       state
     }
 
-    def insert(elem: T, state: LenientState[T, OrderType]): Unit = {
+    def insert(elem: T, state: UpdateState[T, OrderType]): Unit = {
       val elemId = getId(elem)
       val orderKey = getOrderKey(elem)
 
-      // LAST_SEEN behavior: if ID exists, replace the element at that index
+      // UPDATE behavior: if ID exists, replace the element at that index
       if (state.idToIndex.containsKey(elemId)) {
         val existingIndex = state.idToIndex.get(elemId)
         state.elems.set(existingIndex, elem)
@@ -266,7 +266,7 @@ object UniqueOrderByLimit {
       }
     }
 
-    private def sort(state: LenientState[T, OrderType]): Unit = {
+    private def sort(state: UpdateState[T, OrderType]): Unit = {
       state.elems.sort(new Comparator[T] {
         override def compare(o1: T, o2: T): Int = {
           val o1Key = getOrderKey(o1)

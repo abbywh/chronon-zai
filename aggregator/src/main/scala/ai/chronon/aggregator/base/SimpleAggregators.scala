@@ -763,19 +763,19 @@ class Kurtosis extends MomentAggregator {
 class UniqueTopKHelper[T](inputType: DataType,
                           k: Int,
                           maxSizeOpt: Option[Int] = None,
-                          dedupMode: String = DedupMode.FIRST_SEEN.toString) {
+                          collisionStrategy: String = CollisionStrategy.IGNORE.toString) {
 
   private val maxSize: Int = maxSizeOpt.getOrElse(2 * k)
-  private val useLenient: Boolean = dedupMode == DedupMode.LAST_SEEN.toString
+  private val useUpdate: Boolean = collisionStrategy == CollisionStrategy.UPDATE.toString
 
   // Define the order type and create operator based on input type
   val (operator, stateProvider): (Any, StateProviderTrait[T]) = inputType match {
     case IntType =>
       val getOrderKeyInt = (x: T) => x.asInstanceOf[Int]
       val getIdInt = (x: T) => x.asInstanceOf[Int].toLong
-      if (useLenient) {
-        val op = UniqueOrderByLimit.LenientOperator[T, Int](getOrderKeyInt, getIdInt, k, maxSize, topK = true)
-        val provider = new LenientStateProvider[T, Int]
+      if (useUpdate) {
+        val op = UniqueOrderByLimit.UpdateOperator[T, Int](getOrderKeyInt, getIdInt, k, maxSize, topK = true)
+        val provider = new UpdateStateProvider[T, Int]
         (op, provider)
       } else {
         val op = UniqueOrderByLimit.Operator[T, Int](getOrderKeyInt, getIdInt, k, maxSize, topK = true)
@@ -786,9 +786,9 @@ class UniqueTopKHelper[T](inputType: DataType,
     case LongType =>
       val getOrderKeyLong = (x: T) => x.asInstanceOf[Long]
       val getIdLong = (x: T) => x.asInstanceOf[Long]
-      if (useLenient) {
-        val op = UniqueOrderByLimit.LenientOperator[T, Long](getOrderKeyLong, getIdLong, k, maxSize, topK = true)
-        val provider = new LenientStateProvider[T, Long]
+      if (useUpdate) {
+        val op = UniqueOrderByLimit.UpdateOperator[T, Long](getOrderKeyLong, getIdLong, k, maxSize, topK = true)
+        val provider = new UpdateStateProvider[T, Long]
         (op, provider)
       } else {
         val op = UniqueOrderByLimit.Operator[T, Long](getOrderKeyLong, getIdLong, k, maxSize, topK = true)
@@ -799,9 +799,9 @@ class UniqueTopKHelper[T](inputType: DataType,
     case StringType =>
       val getOrderKeyString = (x: T) => x.asInstanceOf[String]
       val getIdString = (x: T) => x.asInstanceOf[String].hashCode.toLong
-      if (useLenient) {
-        val op = UniqueOrderByLimit.LenientOperator[T, String](getOrderKeyString, getIdString, k, maxSize, topK = true)
-        val provider = new LenientStateProvider[T, String]
+      if (useUpdate) {
+        val op = UniqueOrderByLimit.UpdateOperator[T, String](getOrderKeyString, getIdString, k, maxSize, topK = true)
+        val provider = new UpdateStateProvider[T, String]
         (op, provider)
       } else {
         val op = UniqueOrderByLimit.Operator[T, String](getOrderKeyString, getIdString, k, maxSize, topK = true)
@@ -835,9 +835,9 @@ class UniqueTopKHelper[T](inputType: DataType,
           case map: Map[String, AnyRef]      => map("unique_id").asInstanceOf[Long]
         }
 
-      if (useLenient) {
-        val op = UniqueOrderByLimit.LenientOperator[T, String](getOrderKeyStruct, getIdStruct, k, maxSize, topK = true)
-        val provider = new LenientStateProvider[T, String]
+      if (useUpdate) {
+        val op = UniqueOrderByLimit.UpdateOperator[T, String](getOrderKeyStruct, getIdStruct, k, maxSize, topK = true)
+        val provider = new UpdateStateProvider[T, String]
         (op, provider)
       } else {
         val op = UniqueOrderByLimit.Operator[T, String](getOrderKeyStruct, getIdStruct, k, maxSize, topK = true)
@@ -908,48 +908,48 @@ class UniqueTopKHelper[T](inputType: DataType,
     }
   }
 
-  // Helper class to handle type erasure for lenient (LAST_SEEN) mode
-  class LenientStateProvider[T, OrderType] extends StateProviderTrait[T] {
-    def initState(): Any = UniqueOrderByLimit.initLenientState[T, OrderType]
+  // Helper class to handle type erasure for UPDATE collision strategy mode
+  class UpdateStateProvider[T, OrderType] extends StateProviderTrait[T] {
+    def initState(): Any = UniqueOrderByLimit.initUpdateState[T, OrderType]
 
     def insert(elem: T, state: Any): Unit =
       operator
-        .asInstanceOf[UniqueOrderByLimit.LenientOperator[T, OrderType]]
-        .insert(elem, state.asInstanceOf[UniqueOrderByLimit.LenientState[T, OrderType]])
+        .asInstanceOf[UniqueOrderByLimit.UpdateOperator[T, OrderType]]
+        .insert(elem, state.asInstanceOf[UniqueOrderByLimit.UpdateState[T, OrderType]])
 
     def merge(state1: Any, state2: Any): Any = {
-      val s1 = state1.asInstanceOf[UniqueOrderByLimit.LenientState[T, OrderType]]
-      val s2 = state2.asInstanceOf[UniqueOrderByLimit.LenientState[T, OrderType]]
+      val s1 = state1.asInstanceOf[UniqueOrderByLimit.UpdateState[T, OrderType]]
+      val s2 = state2.asInstanceOf[UniqueOrderByLimit.UpdateState[T, OrderType]]
 
       val it = s2.elems.iterator()
       while (it.hasNext) {
         val elem = it.next()
-        operator.asInstanceOf[UniqueOrderByLimit.LenientOperator[T, OrderType]].insert(elem, s1)
+        operator.asInstanceOf[UniqueOrderByLimit.UpdateOperator[T, OrderType]].insert(elem, s1)
       }
 
       s1
     }
 
     def finalize(state: Any): util.ArrayList[T] = {
-      val s = state.asInstanceOf[UniqueOrderByLimit.LenientState[T, OrderType]]
-      operator.asInstanceOf[UniqueOrderByLimit.LenientOperator[T, OrderType]].sortAndPrune(s)
+      val s = state.asInstanceOf[UniqueOrderByLimit.UpdateState[T, OrderType]]
+      operator.asInstanceOf[UniqueOrderByLimit.UpdateOperator[T, OrderType]].sortAndPrune(s)
       s.elems
     }
 
     def clone(state: Any): Any = {
-      val s = state.asInstanceOf[UniqueOrderByLimit.LenientState[T, OrderType]]
+      val s = state.asInstanceOf[UniqueOrderByLimit.UpdateState[T, OrderType]]
       val clonedElems = new util.ArrayList[T](s.elems)
       val clonedIdToIndex = new util.HashMap[Long, Int](s.idToIndex)
-      UniqueOrderByLimit.LenientState[T, OrderType](clonedElems, clonedIdToIndex, s.orderWaterMark, s.indicesDirty)
+      UniqueOrderByLimit.UpdateState[T, OrderType](clonedElems, clonedIdToIndex, s.orderWaterMark, s.indicesDirty)
     }
 
     def normalize(state: Any): Any = {
-      state.asInstanceOf[UniqueOrderByLimit.LenientState[T, OrderType]].elems
+      state.asInstanceOf[UniqueOrderByLimit.UpdateState[T, OrderType]].elems
     }
 
     def denormalize(elems: Any): Any = {
       operator
-        .asInstanceOf[UniqueOrderByLimit.LenientOperator[T, OrderType]]
+        .asInstanceOf[UniqueOrderByLimit.UpdateOperator[T, OrderType]]
         .buildStateFromElems(elems.asInstanceOf[util.ArrayList[T]])
     }
   }
@@ -958,10 +958,10 @@ class UniqueTopKHelper[T](inputType: DataType,
 class UniqueTopKAggregator[T](inputType: DataType,
                               k: Int,
                               maxSizeOpt: Option[Int] = None,
-                              dedupMode: String = DedupMode.FIRST_SEEN.toString)
+                              collisionStrategy: String = CollisionStrategy.IGNORE.toString)
     extends SimpleAggregator[T, Any, util.ArrayList[T]] {
 
-  private val uniqueTopK = new UniqueTopKHelper[T](inputType, k, maxSizeOpt, dedupMode)
+  private val uniqueTopK = new UniqueTopKHelper[T](inputType, k, maxSizeOpt, collisionStrategy)
 
   override def outputType: DataType = ListType(inputType)
 

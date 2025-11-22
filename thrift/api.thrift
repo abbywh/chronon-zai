@@ -218,14 +218,14 @@ enum Operation {
 }
 
 /**
- * Deduplication mode for UNIQUE_TOP_K operation.
+ * Collision strategy for UNIQUE_TOP_K operation.
  * Determines behavior when duplicate unique_id values are encountered.
  */
-enum DedupMode {
-    // Keep the first occurrence when a duplicate unique_id is seen
-    FIRST_SEEN = 0
-    // Replace with the last occurrence when a duplicate unique_id is seen
-    LAST_SEEN = 1
+enum CollisionStrategy {
+    // Keep the first occurrence when a duplicate unique_id is seen (ignore subsequent duplicates)
+    IGNORE = 0
+    // Replace with the most recent occurrence when a duplicate unique_id is seen
+    UPDATE = 1
 }
 
 
